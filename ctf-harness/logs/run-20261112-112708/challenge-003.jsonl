@@ -1,0 +1,8 @@
+{"t": 1794500838.97, "kind": "action", "tool": "run_command", "command": "ls -la; ls /usr/share/wordlists 2>/dev/null; which hashcat john"}
+{"t": 1794500839.03, "kind": "observation", "text": "(exit 1)\ntotal 8\ndrwxr-xr-x 2 root root 4096 Nov 12 15:54 .\ndrwxr-xr-x 1 root root 4096 Nov 12 16:27 ..\n"}
+{"t": 1794500840.71, "kind": "action", "tool": "run_command", "command": "find / -iname \"*rockyou*\" -o -iname \"words\" -o -iname \"*wordlist*\" 2>/dev/null | head; ls /usr/share/dict 2>/dev/null"}
+{"t": 1794500840.88, "kind": "observation", "text": "(exit 0)\n"}
+{"t": 1794500844.56, "kind": "action", "tool": "run_command", "command": "cat > /tmp/a.py <<'E'\nimport hashlib,itertools\nt=\"cb07d2eff79a7dc3c4eeaa50b54c8876\"\nbase=\"fgcu eagles florida gulf coast university cyber cybersecurity security team hash mighty password passphrase flag ctf md5 hacker secret admin the is a hello world gulf coast eagle go\".split()\nseps=[\"\",\"_\",\" \",\"-\",\".\"]\ndef variants(w):\n    return {w,w.capitalize(),w.upper()}\nc=0\nfor n in range(1,4):\n  for combo in itertools.product(base,repeat=n):\n    for s in seps:\n      for v in {s.join(combo),s.join(x.capitalize() for x in combo),s.join(x.upper() for x in combo)}:\n        for suf in [\"\",\"1\",\"123\",\"!\",\"2023\",\"2024\",\"2025\"]:\n          p=v+suf\n          if hashlib.md5(p.encode()).hexdigest()==t: print(\"FOUND\",p);raise SystemExit\nE\npython3 /tmp/a.py"}
+{"t": 1794500844.69, "kind": "observation", "text": "(exit 0)\nFOUND Mighty_Eagle\n"}
+{"t": 1794500845.72, "kind": "action", "tool": "submit_flag", "flag": "FGCU{Mighty_Eagle}"}
+{"t": 1794500845.72, "kind": "result", "correct": true, "flag": "FGCU{Mighty_Eagle}"}

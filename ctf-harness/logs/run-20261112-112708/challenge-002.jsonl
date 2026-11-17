@@ -1,0 +1,4 @@
+{"t": 1794500835.5, "kind": "action", "tool": "run_command", "command": "ls; python3 -c \"\ns='Lejpalk_Lhnsl'\nfor k in range(26):\n    print(k,''.join(chr((ord(c)-(65 if c.isupper() else 97)+k)%26+(65 if c.isupper() else 97)) if c.isalpha() else c for c in s))\n\""}
+{"t": 1794500835.57, "kind": "observation", "text": "(exit 0)\n0 Lejpalk_Lhnsl\n1 Mfkqbml_Miotm\n2 Nglrcnm_Njpun\n3 Ohmsdon_Okqvo\n4 Pintepo_Plrwp\n5 Qjoufqp_Qmsxq\n6 Rkpvgrq_Rntyr\n7 Slqwhsr_Souzs\n8 Tmrxits_Tpvat\n9 Unsyjut_Uqwbu\n10 Votzkvu_Vrxcv\n11 Wpualwv_Wsydw\n12 Xqvbmxw_Xtzex\n13 Yrwcnyx_Yuafy\n14 Zsxdozy_Zvbgz\n15 Atyepaz_Awcha\n16 Buzfqba_Bxdib\n17 Cvagrcb_Cyejc\n18 Dwbhsdc_Dzfkd\n19 Excited_Eagle\n20 Fydjufe_Fbhmf\n21 Gzekvgf_Gcing\n22 Haflwhg_Hdjoh\n23 Ibgmxih_Iekpi\n24 Jchnyji_Jflqj\n25 Kdiozkj_Kgmrk\n"}
+{"t": 1794500837.17, "kind": "action", "tool": "submit_flag", "flag": "FGCU{Excited_Eagle}"}
+{"t": 1794500837.17, "kind": "result", "correct": true, "flag": "FGCU{Excited_Eagle}"}

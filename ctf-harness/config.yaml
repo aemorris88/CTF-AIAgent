@@ -1,0 +1,55 @@
+# ============================================================================
+# CTF Agent Harness — configuration (filled in for the FGCU static site)
+# ============================================================================
+
+run:
+  model: "claude-sonnet-5-5"   # use whatever Claude model your API key can access
+  max_steps: 20                # hard cap on agent turns per challenge
+  max_wall_seconds: 600        # hard cap on wall-clock time per challenge
+  max_challenges: 3            # how many to attempt this run (null = all)
+  # Self-contained categories work under full isolation. The meta "web" ones
+  # (#008-011) need the platform's GitHub repo and #031 needs a live API, so
+  # leave those out of an isolated run.
+  categories: ["Cryptography"]       # try ["crypto","forensics","reverse","stego"] later
+
+  # For the cost column in results.csv. Fill in your model's $/million-tokens.
+  price_per_mtok_input: 0.0
+  price_per_mtok_output: 0.0
+
+flag:
+  # Every flag on this platform is wrapped FGCU{...} (confirmed against the hashes).
+  regex: 'FGCU\{[^}]+\}'
+
+sandbox:
+  image: "ctf-harness-sandbox:latest"
+  # none -> fully offline. Correct default here: challenges are self-contained
+  #         (text in the description, or a downloaded file), and grading is local.
+  network_mode: "none"
+  allowed_targets: []
+  command_timeout: 120
+  workdir: "/work"
+
+platform:
+  adapter: "azure_swa"
+  base_url: "https://jolly-grass-0486f7a10.3.azurestaticapps.net"
+
+  auth:
+    # "none" works if /data and /assets are public (most likely).
+    # If a dry-run says the list isn't JSON, switch to "cookie_env" and put the
+    # browser Cookie header value in .env as CTF_COOKIE.
+    mode: "none"
+
+  challenges:
+    list_path: "/data/challenges.json"
+    files_base_url: null         # null = base_url; assets/ resolve against the root
+    field_map:
+      id: "id"
+      name: "title"
+      category: "categoryLabel"
+      description: "description"
+      value: "points"
+      files: "resources"         # list of {href, external?}; external links skipped
+      answer_sha256: "flagSha256"
+
+  submit:
+    mode: "local_hash"           # grading is sha256(flag) == flagSha256, done locally
