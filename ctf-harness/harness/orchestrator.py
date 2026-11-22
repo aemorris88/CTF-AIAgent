@@ -46,6 +46,13 @@ def run(cfg: dict, secrets: dict, client: Any, run_id: str | None = None) -> str
     logger = RunLogger("results", "logs", run_id)
     print(f"Run: {logger.run_id}")
 
+    # Opt-in browser navigation experiment; normal harness remains unchanged.
+    browser = None
+    if os.environ.get("CTF_BROWSER_MODE") == "1":
+        from .browser import CTFBrowser
+        browser = CTFBrowser()
+        browser.start()
+
     platform = load_platform(cfg, secrets)
     print("Logging in to platform…")
     platform.login()
@@ -73,6 +80,7 @@ def run(cfg: dict, secrets: dict, client: Any, run_id: str | None = None) -> str
                     max_steps=int(run_cfg["max_steps"]),
                     max_wall_seconds=int(run_cfg["max_wall_seconds"]),
                     on_event=logger.event_sink(ch.id),
+                    browser=browser,
                 )
                 result = agent.run()
             finally:
@@ -88,5 +96,7 @@ def run(cfg: dict, secrets: dict, client: Any, run_id: str | None = None) -> str
         print(f"    => {status}  [{result.steps} steps, {result.wall_seconds}s, "
               f"{result.input_tokens + result.output_tokens} tok]\n")
 
+    if browser is not None:
+        browser.close()
     print(f"Done. Solved {solved}/{len(chosen)}. Results: {logger.csv_path}")
     return logger.csv_path
