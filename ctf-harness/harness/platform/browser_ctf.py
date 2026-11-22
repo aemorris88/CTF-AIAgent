@@ -6,6 +6,8 @@ The caller decides which challenge/flag to use.
 from __future__ import annotations
 
 import re
+import uuid
+from urllib.parse import urljoin, urlparse
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +66,79 @@ class BrowserCTF:
 
     def open_challenge(self, title: str) -> dict[str, str]:
         return self.click_text(title)
+
+    def list_attachments(self) -> list[dict[str, str]]:
+        """Discover downloadable challenge assets from visible links, not JSON.
+
+        Only same-site /assets/ links are considered challenge attachments.
+        External resource URLs are deliberately excluded from file downloads.
+        """
+        page = self._page()
+        origin = urlparse(self.url)
+        attachments: list[dict[str, str]] = []
+        for link in page.locator("a[href]").all():
+            if not link.is_visible():
+                continue
+            href = link.get_attribute("href") or ""
+            absolute = urljoin(page.url, href)
+            parsed = urlparse(absolute)
+            if parsed.scheme not in ("http", "https"):
+                continue
+            if parsed.netloc != origin.netloc or not parsed.path.startswith("/assets/"):
+                continue
+            label = link.inner_text().strip() or link.get_attribute("download") or ""
+            if label:
+                attachments.append({"label": label, "href": href})
+        return attachments
+
+    def download_attachment(
+        self,
+        label: str,
+        destination_dir: str | Path = "browser_artifacts/attachments",
+        max_bytes: int = 20 * 1024 * 1024,
+    ) -> dict[str, Any]:
+        """Click a visible, same-site attachment link and save its bytes.
+
+        Does not execute files, bypass the UI, or transfer them to the sandbox.
+        The caller must explicitly approve sandbox import separately.
+        """
+        if not label or len(label) > 200:
+            raise ValueError("attachment label must be 1-200 characters")
+        if max_bytes <= 0:
+            raise ValueError("max_bytes must be positive")
+
+        matches = [a for a in self.list_attachments() if a["label"] == label]
+        if len(matches) != 1:
+            raise ValueError(f"Expected exactly one visible asset link labelled {label!r}; found {len(matches)}")
+        page = self._page()
+        link = page.get_by_role("link", name=label, exact=True)
+        if link.count() != 1:
+            raise ValueError("Attachment link is ambiguous in the page")
+        with page.expect_download(timeout=15000) as download_info:
+            link.click(timeout=15000)
+        download = download_info.value
+        if download.failure():
+            raise RuntimeError(f"Browser download failed: {download.failure()}")
+
+        # Strip directory components from a browser-supplied filename.
+        suggested = download.suggested_filename.replace("\\", "/").split("/")[-1]
+        safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", suggested).strip(".")
+        if not safe_name or safe_name in (".", ".."):
+            safe_name = "attachment.bin"
+        output_dir = Path(destination_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output = output_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
+        download.save_as(output)
+        size = output.stat().st_size
+        if size > max_bytes:
+            output.unlink(missing_ok=True)
+            raise ValueError(f"Downloaded file exceeds {max_bytes} byte limit")
+        return {
+            "label": label,
+            "filename": safe_name,
+            "path": str(output.resolve()),
+            "bytes": size,
+        }
 
     def submit_flag(self, flag: str) -> dict[str, Any]:
         """Submit through the visible UI; never infer correctness from hashes.
