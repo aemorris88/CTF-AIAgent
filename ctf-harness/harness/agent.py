@@ -75,6 +75,26 @@ BROWSER_TOOLS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "browser_list_attachments",
+        "description": "List downloadable attachments shown on the currently open CTF challenge page. No download occurs.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "browser_download",
+        "description": (
+            "Download ONE visible CTF challenge attachment by its exact label, "
+            "then copy it into the offline analysis sandbox. Does not execute the file. "
+            "Use browser_list_attachments first to identify the label."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "description": "Exact attachment label from browser_list_attachments"}
+            },
+            "required": ["label"],
+        },
+    },
+    {
         "name": "browser_click",
         "description": "Click a visible text label, such as a challenge title, in the FGCU CTF browser window.",
         "input_schema": {
@@ -154,6 +174,35 @@ class CTFAgent:
 
     def _dispatch(self, name: str, args: dict, result: AgentResult) -> tuple[str, bool]:
         """Run one tool. Returns (observation_text, should_stop)."""
+        if name == "browser_list_attachments" and self.browser is not None:
+            try:
+                attachments = self.browser.list_attachments()
+                labels = [item.get("label", "") for item in attachments]
+                obs = ("Visible attachments (exact labels): " + repr(labels)) if labels else "No downloadable attachments on this page."
+            except Exception as exc:
+                obs = f"Attachment listing failed: {type(exc).__name__}: {str(exc)[:300]}"
+            self.on_event("observation", {"text": obs})
+            return obs, False
+
+        if name == "browser_download" and self.browser is not None:
+            label = args.get("label", "")
+            self.on_event("action", {"tool": "browser_download", "label": label})
+            try:
+                if not isinstance(label, str) or not label.strip():
+                    raise ValueError("A nonempty attachment label is required")
+                # The browser controller validates the label against visible, same-site asset links.
+                # The adapter copies the file to the ALREADY-RUNNING isolated sandbox.
+                transfer = self.browser.download_to_sandbox(label, self.sandbox)
+                obs = (f"Attachment '{transfer['filename']}' saved as {transfer['sandbox_path']} "
+                       f"({transfer['bytes']} bytes). Use run_command to examine it; it has NOT been executed.")
+            except Exception as exc:
+                obs = f"Attachment download failed: {type(exc).__name__}: {str(exc)[:300]}"
+            self.on_event("observation", {"text": obs})
+            return obs, False
+
+        if name in ("browser_list_attachments", "browser_download") and self.browser is None:
+            return f"Browser unavailable; cannot perform {name}", False
+
         if name == "browser_read" and self.browser is not None:
             obs = self.browser.read_page()
             self.on_event("observation", {"text": obs})
@@ -229,6 +278,8 @@ class CTFAgent:
             system = ("You are an AI competitor navigating the authorized FGCU Talon CTF website. "
                       "Read the visible webpage with browser_read, select challenges using "
                       "browser_click, and reason from only what is visible in the UI and "
+                      "any challenge attachments. For attached files, call browser_list_attachments "
+                      "then browser_download with an exact label before using run_command. "
                       "any approved local analysis tools. Never inspect answer hashes or "
                       "the challenge JSON to obtain solutions. You may use run_command "
                       "for offline analysis. Submit a candidate through submit_flag only "
