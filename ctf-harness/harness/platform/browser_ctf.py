@@ -339,7 +339,16 @@ class BrowserCTF:
     def close(self) -> None:
         try:
             if self.context:
-                self.context.close()
+                try:
+                    self.context.close()
+                except PlaywrightError as exc:
+                    if (
+                        "closed" not in str(exc).lower()
+                        and "connection" not in str(exc).lower()
+                    ):
+                        raise
+                finally:
+                    self.context = None
 
             if self.browser:
                 self.browser.close()

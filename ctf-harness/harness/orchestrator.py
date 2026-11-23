@@ -96,41 +96,83 @@ def run(cfg: dict, secrets: dict, client: Any, run_id: str | None = None) -> str
 
 
 def _run_browser_session(cfg: dict, client: Any, logger: RunLogger) -> str:
-    """One website-first AI session. No challenge JSON or local grading.
+    """Website-first sequential challenge run with per-challenge isolation/logs.
 
-    This is an integration test, not yet a per-challenge evaluation run.
+    The agent chooses the browser actions for each assigned challenge; only
+    the queue metadata originates from visible dashboard text, never JSON.
     """
     from .browser import CTFBrowser
+    from .browser_queue import discover_challenges, ChallengeMetrics, write_challenge_metrics
 
     run_cfg = cfg["run"]
     browser = CTFBrowser()
-    sandbox = Sandbox(cfg)
-    # Placeholder metadata only. The agent receives the actual challenge
-    # descriptions through browser_read, not through this object.
-    session = Challenge(
-        id="browser-session", name="Website-selected challenge",
-        category="browser", description="",
-    )
+    metrics_path = os.path.join("results", f"{logger.run_id}-per-challenge.csv")
+    completed = 0
+    attempted = 0
+    import time
+    started = time.monotonic()
+    total_budget = int(run_cfg.get("browser_run_max_seconds", 3600))
     try:
-        browser.start()  # User signs in; browser remains on challenge dashboard.
-        sandbox.start()
-        agent = CTFAgent(
-            client=client, model=run_cfg["model"], sandbox=sandbox,
-            platform=None,  # Browser mode NEVER calls the JSON-backed grader.
-            challenge=session, flag_regex=cfg["flag"]["regex"],
-            max_steps=int(run_cfg["max_steps"]),
-            max_wall_seconds=int(run_cfg["max_wall_seconds"]),
-            on_event=logger.event_sink(session.id), browser=browser,
-        )
-        result = agent.run()
-        logger.write_result(
-            result,
-            float(run_cfg.get("price_per_mtok_input", 0) or 0),
-            float(run_cfg.get("price_per_mtok_output", 0) or 0),
-        )
-        print(f"Browser session finished: solved={result.solved}; "
-              f"steps={result.steps}; results={logger.csv_path}")
+        browser.start()  # Human signs in once. Browser session persists.
+        initial_text = browser.controller.read_page(max_chars=50000)["visible_text"]
+        challenges = discover_challenges(initial_text)
+        categories = run_cfg.get("categories")
+        if categories:
+            wanted = {str(x).lower() for x in categories}
+            challenges = [c for c in challenges if c.category.lower() in wanted]
+        limit = run_cfg.get("max_challenges")
+        if limit is not None:
+            challenges = challenges[:max(0, int(limit))]
+        print(f"Browser discovered {len(challenges)} unsolved challenges in selected run.")
+        if not challenges:
+            return logger.csv_path
+
+        for index, ch in enumerate(challenges, 1):
+            if time.monotonic() - started >= total_budget:
+                print(f"Global browser-run time budget reached ({total_budget}s). Stopping.")
+                break
+            print(f"[{index}/{len(challenges)}] {ch.short()}")
+            # Return via visible UI, never via JSON or internal app state.
+            before = browser.controller.read_page(max_chars=50000)["visible_text"]
+            if "← Back" in before:
+                browser.click_text("← Back")
+            dashboard = browser.controller.read_page(max_chars=50000)["visible_text"]
+            present = {x.id for x in discover_challenges(dashboard, include_solved=True)}
+            if ch.id not in present:
+                raise RuntimeError(f"Challenge {ch.id} missing from dashboard")
+            # Sandbox is fresh and offline for every challenge.
+            sandbox = Sandbox(cfg)
+            result = None
+            sink = logger.event_sink(ch.id)
+            record = ChallengeMetrics(ch, sink)
+            try:
+                sandbox.start()
+                agent = CTFAgent(
+                    client=client, model=run_cfg["model"], sandbox=sandbox,
+                    platform=None, challenge=ch, flag_regex=cfg["flag"]["regex"],
+                    max_steps=int(run_cfg["max_steps"]),
+                    max_wall_seconds=int(run_cfg["max_wall_seconds"]),
+                    on_event=record.event, browser=browser,
+                )
+                result = agent.run()
+            except Exception as exc:
+                # Keep the challenge's failed result rather than corrupt other rows.
+                from .agent import AgentResult
+                result = AgentResult(ch.id, ch.name, ch.category,
+                                     failure_reason=f"exception: {type(exc).__name__}: {str(exc)[:120]}")
+                sink("error", {"text": result.failure_reason})
+            finally:
+                sandbox.stop()
+            logger.write_result(result,
+                float(run_cfg.get("price_per_mtok_input", 0) or 0),
+                float(run_cfg.get("price_per_mtok_output", 0) or 0))
+            write_challenge_metrics(metrics_path, logger.run_id, ch, result, record)
+            completed += int(result.solved)
+            attempted += 1
+            print(f"    => solved={result.solved} steps={result.steps} "
+                  f"attempts={record.attempts} challenge_seconds={record.seconds()}")
+
+        print(f"Done: {completed}/{attempted} solved. Per-challenge results: {metrics_path}")
         return logger.csv_path
     finally:
-        sandbox.stop()
         browser.close()

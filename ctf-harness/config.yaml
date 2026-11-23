@@ -5,12 +5,12 @@
 run:
   model: "claude-sonnet-5-5"   # use whatever Claude model your API key can access
   max_steps: 20                # hard cap on agent turns per challenge
-  max_wall_seconds: 600        # hard cap on wall-clock time per challenge
-  max_challenges: 3            # how many to attempt this run (null = all)
+  max_wall_seconds: 300        # hard cap on wall-clock time per challenge
+  max_challenges: 31            # how many to attempt this run (null = all)
   # Self-contained categories work under full isolation. The meta "web" ones
   # (#008-011) need the platform's GitHub repo and #031 needs a live API, so
   # leave those out of an isolated run.
-  categories: ["Cryptography"]       # try ["crypto","forensics","reverse","stego"] later
+  categories: []  
 
   # For the cost column in results.csv. Fill in your model's $/million-tokens.
   price_per_mtok_input: 0.0
